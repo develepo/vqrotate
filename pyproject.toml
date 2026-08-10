@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vqrotate"
+version = "0.1.0"
+description = "Drop-in Rotation Trick for Vector Quantization (ICLR 2025)"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Farhan Sheikh", email = "thatsheikhguy@gmail.com"}
+]
+dependencies = [
+    "torch>=2.0.0",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "numpy"]
+
+[project.urls]
+Homepage = "https://github.com/develepo/vqrotate"
+Repository = "https://github.com/develepo/vqrotate"
