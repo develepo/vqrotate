@@ -142,7 +142,7 @@ class RotationQuantization(th.autograd.Function):
 
 class Rotator():
     @staticmethod
-    def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "adaptive", threshold=1.0, multihead=True, eps:float=1e-8):
+    def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", threshold=1.0, multihead=True, eps:float=1e-8):
         def wrapped(z):
             output = quantize_fn(z)
             z_q = output[0] if isinstance(output, (tuple, list)) else output
@@ -152,7 +152,7 @@ class Rotator():
             return z_q_rotated
         return wrapped
 
-def attach_rotator(quantizer, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "adaptive", threshold=1.0, multihead=True, eps:float=1e-8):
+def attach_rotator(quantizer, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", threshold=1.0, multihead=True, eps:float=1e-8):
     if not hasattr(quantizer, 'forward'):
         raise ValueError("The quantizer must have a 'forward' method.")
     original_forward = quantizer.forward
