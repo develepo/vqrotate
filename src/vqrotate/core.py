@@ -164,8 +164,14 @@ class Rotator():
     def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", multihead=True, eps:float=1e-8):
         def wrapped(z):
             output = quantize_fn(z)
-            codebook = quantize_fn.__self__.embedding.weight
             z_q = output[0] if isinstance(output, (tuple, list)) else output
+            if strategy == "adaptive":
+                try:
+                    codebook = quantize_fn.__self__.embedding.weight
+                except AttributeError:
+                    codebook=None
+            else:
+                codebook=None        
             z_q_rotated = RotationQuantization.apply(z, z_q, strategy, multihead, eps, codebook)
             if isinstance(output, (tuple, list)):
                 return (z_q_rotated, *output[1:])
