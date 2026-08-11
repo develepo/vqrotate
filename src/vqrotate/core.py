@@ -70,29 +70,48 @@ def _householder_rotation(e: th.Tensor, q: th.Tensor, grad_output: th.Tensor, ep
 
     return grad_e_f32.to(original_dtype)
 
-def _adaptive_scale(e : th.Tensor, q: th.Tensor, grad_e : th.Tensor, dim: int, threshold: float = 1.0, min_scale: float = 0.1, max_scale: float = 10.0) -> th.Tensor:
+def _adaptive_scale(e : th.Tensor, q: th.Tensor, grad_e : th.Tensor, dim: int, codebook: Optional[th.Tensor]=None) -> th.Tensor:
     eps = 1e-8
-    e_norm = _safe_norm(e, dim=-1, eps=eps)
+    e_norm = _safe_norm(e, dim=-1,  eps=eps)
     q_norm = _safe_norm(q, dim=-1, eps=eps)
     base_scale = q_norm / e_norm
-    distance =th.norm(e - q, dim=-1, keepdim=True)
-    delta_norm= distance/(dim**0.5 + eps)
-    alpha = 0.5 + 1.5*th.sigmoid((delta_norm - threshold))
-    final_scale = base_scale * alpha
-    final_scale = th.clamp(final_scale, min=min_scale, max=max_scale)
-    return grad_e * final_scale
+    lamba_here = grad_e * base_scale
+    if codebook is None :
+        return lamba_here
+    #computing q2 coz we need it for geometric adaption
+    e_flat = e.view(-1, dim)
+    distances = th.cdist(e_flat, codebook)
+    indices = th.argsort(distances, dim=1)
+    q2_indices = indices[:, 1]
+    q2 = codebook[q2_indices]
+    q2 = q2.view(e.shape)
+    #computing the distance ratio
+    d1 = th.norm(e-q, dim=-1, keepdim=True)
+    d2 = th.norm(e-q2, dim=-1, keepdim=True)
+    gamma = d1/(d1+d2+eps)
+    #alignment
+    direction = q2-q
+    direction_hat = direction/(direction.norm(dim=-1, keepdim=True) + eps)
+    grad_hat = grad_e / (grad_e.norm(dim=-1, keepdim=True) + eps)
+    alignment = (grad_hat * direction_hat).sum(dim=-1, keepdim=True)
+    usefulness = F.relu(alignment)
+    #assembling
+    geo_adapt = 1.0 + gamma*usefulness
+    final_adapt = base_scale*geo_adapt
+    final_scale = th.clamp(final_adapt, 0.1,2.0)
+    return grad_e* final_scale
 
 class RotationQuantization(th.autograd.Function):
     @staticmethod
-    def forward(ctx, e,q, strategy,threshold, multihead, eps):
+    def forward(ctx, e,q, strategy, multihead, eps, codebook):
         ctx.save_for_backward(e, q)
         ctx.strategy = strategy
-        ctx.threshold = threshold
         ctx.multihead = multihead
         ctx.eps = eps
         ctx.embedding_dim = e.shape[-1]
         ctx.original_dtype = e.dtype
         ctx.shape_info = None
+        ctx.codebook = codebook
 
         if multihead:
             e_flat, shape_info = _handle_multihead(e)
@@ -108,10 +127,10 @@ class RotationQuantization(th.autograd.Function):
     def backward(ctx, grad_output):
         e,q = ctx.saved_tensors
         strategy = ctx.strategy
-        threshold = ctx.threshold
         multihead = ctx.multihead
         eps = ctx.eps
         dim = ctx.embedding_dim
+        codebook = ctx.codebook
         if multihead:
             e_flat = ctx.e_flat
             q_flat = ctx.q_flat
@@ -129,7 +148,7 @@ class RotationQuantization(th.autograd.Function):
             q_norm = _safe_norm(q_flat, dim=-1, eps=eps)
             grad_e_flat = grad_e_flat * (q_norm / e_norm)
         elif strategy == "adaptive":
-            grad_e_flat = _adaptive_scale(e_flat, q_flat, grad_e_flat, dim, threshold)
+            grad_e_flat = _adaptive_scale(e_flat, q_flat, grad_e_flat, dim, codebook)
         elif strategy == "reflection":
             grad_e_flat = grad_flat
         else:
@@ -138,24 +157,25 @@ class RotationQuantization(th.autograd.Function):
             grad_e = _restore_multihead(grad_e_flat, shape_info)
         else:  
             grad_e = grad_e_flat
-        return grad_e, None, None, None, None, None
+        return grad_e, None, None, None, None, None, None
 
 class Rotator():
     @staticmethod
-    def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", threshold=1.0, multihead=True, eps:float=1e-8):
+    def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", multihead=True, eps:float=1e-8):
         def wrapped(z):
             output = quantize_fn(z)
+            codebook = quantize_fn.__self__.embedding.weight
             z_q = output[0] if isinstance(output, (tuple, list)) else output
-            z_q_rotated = RotationQuantization.apply(z, z_q, strategy, threshold, multihead, eps)
+            z_q_rotated = RotationQuantization.apply(z, z_q, strategy, multihead, eps, codebook)
             if isinstance(output, (tuple, list)):
                 return (z_q_rotated, *output[1:])
             return z_q_rotated
         return wrapped
 
-def attach_rotator(quantizer, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", threshold=1.0, multihead=True, eps:float=1e-8):
+def attach_rotator(quantizer, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", multihead=True, eps:float=1e-8):
     if not hasattr(quantizer, 'forward'):
         raise ValueError("The quantizer must have a 'forward' method.")
     original_forward = quantizer.forward
-    wrapped_forward = Rotator.wrap(original_forward, strategy=strategy, threshold=threshold, multihead=multihead, eps=eps)
+    wrapped_forward = Rotator.wrap(original_forward, strategy=strategy, multihead=multihead, eps=eps)
     quantizer.forward = wrapped_forward
     return quantizer

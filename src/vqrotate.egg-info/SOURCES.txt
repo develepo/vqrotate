@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+src/vqrotate/__init__.py
+src/vqrotate/core.py
+src/vqrotate/test.py
+src/vqrotate.egg-info/PKG-INFO
+src/vqrotate.egg-info/SOURCES.txt
+src/vqrotate.egg-info/dependency_links.txt
+src/vqrotate.egg-info/requires.txt
+src/vqrotate.egg-info/top_level.txt
+tests/test_geometry.py

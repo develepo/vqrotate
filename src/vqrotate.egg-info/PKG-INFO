@@ -1,0 +1,35 @@
+Metadata-Version: 2.4
+Name: vqrotate
+Version: 0.1.2
+Summary: Drop-in Rotation Trick for Vector Quantization (ICLR 2025)
+Author-email: Farhan Sheikh <thatsheikhguy@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/develepo/vqrotate
+Project-URL: Repository, https://github.com/develepo/vqrotate
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch>=2.0.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: numpy; extra == "dev"
+Dynamic: license-file
+
+# vqrotate
+
+**One-line Rotation Trick for VQ-VAEs.**
+
+Drop-in wrapper that attaches the ICLR 2025 Rotation Trick to any VQ layer.
+
+## Features
+- Single line of code: `attach_rotation(quantizer)`
+- Multi-head support (lucidrains compatible)
+- Mixed precision (AMP) ready
+- Adaptive gradient scaling (89% codebook usage on Speech Commands)
+
+## Install
+```bash
+pip install git+https://github.com/develepo/vqrotate.git
