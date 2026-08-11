@@ -70,40 +70,25 @@ def _householder_rotation(e: th.Tensor, q: th.Tensor, grad_output: th.Tensor, ep
 
     return grad_e_f32.to(original_dtype)
 
-def _adaptive_scale(e : th.Tensor, q: th.Tensor, grad_e : th.Tensor, dim: int, codebook: Optional[th.Tensor]=None) -> th.Tensor:
+def _adaptive_scale(e : th.Tensor, q: th.Tensor, grad_e : th.Tensor, dim: int) -> th.Tensor:
     eps = 1e-8
     e_norm = _safe_norm(e, dim=-1,  eps=eps)
     q_norm = _safe_norm(q, dim=-1, eps=eps)
     base_scale = q_norm / e_norm
-    lamba_here = grad_e * base_scale
-    if codebook is None :
-        return lamba_here
-    #computing q2 coz we need it for geometric adaption
-    e_flat = e.view(-1, dim)
-    distances = th.cdist(e_flat, codebook)
-    indices = th.argsort(distances, dim=1)
-    q2_indices = indices[:, 1]
-    q2 = codebook[q2_indices]
-    q2 = q2.view(e.shape)
-    #computing the distance ratio
-    d1 = th.norm(e-q, dim=-1, keepdim=True)
-    d2 = th.norm(e-q2, dim=-1, keepdim=True)
-    gamma = d1/(d1+d2+eps)
-    #alignment
-    direction = q2-q
-    direction_hat = direction/(direction.norm(dim=-1, keepdim=True) + eps)
-    grad_hat = grad_e / (grad_e.norm(dim=-1, keepdim=True) + eps)
-    alignment = (grad_hat * direction_hat).sum(dim=-1, keepdim=True)
-    usefulness = F.relu(alignment)
-    #assembling
-    geo_adapt = 1.0 + gamma*usefulness
-    final_adapt = base_scale*geo_adapt
-    final_scale = th.clamp(final_adapt, 0.1,2.0)
-    return grad_e* final_scale
+    #computing gradient norm adaptive scaling
+    grad_norm = grad_e.norm(dim=-1,keepdim=True)
+    grad_flat = grad_norm.view(-1, 1)
+    mu = grad_flat.mean(dim=0, keepdim=True).detach()
+    sigma = grad_flat.std(dim=0, keepdim=True).detach()
+    z_score = (grad_norm - mu)/(sigma + eps) 
+    alpha = 1.0 + th.tanh(z_score)
+    final_adapt = base_scale*alpha 
+    final_scale = th.clamp(final_adapt, 0.1,2.0)      
+    return grad_e*final_scale
 
 class RotationQuantization(th.autograd.Function):
     @staticmethod
-    def forward(ctx, e,q, strategy, multihead, eps, codebook):
+    def forward(ctx, e,q, strategy, multihead, eps):
         ctx.save_for_backward(e, q)
         ctx.strategy = strategy
         ctx.multihead = multihead
@@ -111,7 +96,6 @@ class RotationQuantization(th.autograd.Function):
         ctx.embedding_dim = e.shape[-1]
         ctx.original_dtype = e.dtype
         ctx.shape_info = None
-        ctx.codebook = codebook
 
         if multihead:
             e_flat, shape_info = _handle_multihead(e)
@@ -130,7 +114,6 @@ class RotationQuantization(th.autograd.Function):
         multihead = ctx.multihead
         eps = ctx.eps
         dim = ctx.embedding_dim
-        codebook = ctx.codebook
         if multihead:
             e_flat = ctx.e_flat
             q_flat = ctx.q_flat
@@ -148,7 +131,7 @@ class RotationQuantization(th.autograd.Function):
             q_norm = _safe_norm(q_flat, dim=-1, eps=eps)
             grad_e_flat = grad_e_flat * (q_norm / e_norm)
         elif strategy == "adaptive":
-            grad_e_flat = _adaptive_scale(e_flat, q_flat, grad_e_flat, dim, codebook)
+            grad_e_flat = _adaptive_scale(e_flat, q_flat, grad_e_flat, dim)
         elif strategy == "reflection":
             grad_e_flat = grad_flat
         else:
@@ -164,15 +147,8 @@ class Rotator():
     def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", multihead=True, eps:float=1e-8):
         def wrapped(z):
             output = quantize_fn(z)
-            z_q = output[0] if isinstance(output, (tuple, list)) else output
-            if strategy == "adaptive":
-                try:
-                    codebook = quantize_fn.__self__.embedding.weight
-                except AttributeError:
-                    codebook=None
-            else:
-                codebook=None        
-            z_q_rotated = RotationQuantization.apply(z, z_q, strategy, multihead, eps, codebook)
+            z_q = output[0] if isinstance(output, (tuple, list)) else output  
+            z_q_rotated = RotationQuantization.apply(z, z_q, strategy, multihead, eps)
             if isinstance(output, (tuple, list)):
                 return (z_q_rotated, *output[1:])
             return z_q_rotated
