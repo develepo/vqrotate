@@ -1,2 +1,6 @@
 "dist/" 
 "src/*.egg-info/" 
+"dist/" 
+"src/*.egg-info/" 
+"src/vqrotate/__pycache__/" 
+"*.pyc" 
