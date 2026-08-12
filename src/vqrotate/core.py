@@ -16,10 +16,9 @@ This implementation includes:
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Union, Tuple, Callable, Literal, Any
-import warnings
+from typing import  Tuple, Literal
 
-strategy = Literal["ste", "adaptive", "rotation", "reflection"]
+strategy = Literal["ste", "adaptive", "rotation"]
 shape_info = Tuple[Tuple[int, ...], int]  
 
 def _handle_multihead(e: th.Tensor) -> Tuple[th.Tensor, shape_info]:
@@ -132,8 +131,6 @@ class RotationQuantization(th.autograd.Function):
             grad_e_flat = grad_e_flat * (q_norm / e_norm)
         elif strategy == "adaptive":
             grad_e_flat = _adaptive_scale(e_flat, q_flat, grad_e_flat, dim)
-        elif strategy == "reflection":
-            grad_e_flat = grad_flat
         else:
             raise ValueError(f"Unknown strategy: {strategy}")
         if multihead:
@@ -144,7 +141,7 @@ class RotationQuantization(th.autograd.Function):
 
 class Rotator():
     @staticmethod
-    def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", multihead=True, eps:float=1e-8):
+    def wrap(quantize_fn, strategy: Literal["ste", "rotation", "adaptive"] = "rotation", multihead=True, eps:float=1e-8):
         def wrapped(z):
             output = quantize_fn(z)
             z_q = output[0] if isinstance(output, (tuple, list)) else output  
@@ -154,7 +151,7 @@ class Rotator():
             return z_q_rotated
         return wrapped
 
-def attach_rotator(quantizer, strategy: Literal["ste", "rotation", "adaptive", "reflection"] = "rotation", multihead=True, eps:float=1e-8):
+def attach_rotator(quantizer, strategy: Literal["ste", "rotation", "adaptive"] = "rotation", multihead=True, eps:float=1e-8):
     if not hasattr(quantizer, 'forward'):
         raise ValueError("The quantizer must have a 'forward' method.")
     original_forward = quantizer.forward
