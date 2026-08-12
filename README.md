@@ -19,7 +19,7 @@ vqrotate packages these approaches behind a simple API so that they can be easil
 
 - **One-line API:** `attach_rotation(quantizer)`
 - **Drop-in compatible:** Works with any VQ layer that has a `forward` method.
-- **Multiple strategies:** `ste`, `rotation` (default), `adaptive` (experimental), `reflection`.
+- **Multiple strategies:** `ste`, `rotation` (default), `adaptive` (experimental).
 - **Multi-head support:** Handles lucidrains-style multi-head codebooks.
 - **Mixed precision ready:** AMP compatible.
 - **No user codebook required:** The rotation trick is applied automatically.
