@@ -133,4 +133,4 @@ The Householder reflection is used to compute the halfway vector `r` and to appl
 r = sum_hat / sum_hat_norm
 ```
 # Apply reflection matrix-free
-grad_e = grad - 2 * r * (r · grad)
+$$ grad_e = grad - 2 * r * (r · grad) $$
